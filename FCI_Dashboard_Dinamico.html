@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard FCI — Dinámico</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #f5f3ee;
+    --surface: #ffffff;
+    --border: #e2dfd6;
+    --text: #1a1916;
+    --muted: #7a7870;
+    --blue: #3266ad;
+    --coral: #d85a30;
+    --teal: #1d9e75;
+  }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 2.5rem 2rem;
+  }
+
+  header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 2.5rem;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 1.25rem;
+  }
+
+  header h1 {
+    font-family: 'DM Mono', monospace;
+    font-size: 1.5rem;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  #status {
+    font-size: 0.75rem;
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+  }
+
+  #status.ok    { color: var(--teal); }
+  #status.error { color: var(--coral); }
+
+  button#reload {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.72rem;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.35rem 0.75rem;
+    cursor: pointer;
+    color: var(--muted);
+    transition: background 0.15s, color 0.15s;
+  }
+  button#reload:hover { background: var(--surface); color: var(--text); }
+
+  #loading {
+    text-align: center;
+    padding: 4rem 2rem;
+    font-family: 'DM Mono', monospace;
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+
+  #content { display: none; }
+
+  .kpis {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+
+  .kpi {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.1rem 1.25rem;
+  }
+
+  .kpi-label {
+    font-size: 0.72rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    margin-bottom: 0.4rem;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .kpi-value {
+    font-size: 1.6rem;
+    font-weight: 500;
+    font-family: 'DM Mono', monospace;
+    letter-spacing: -0.03em;
+  }
+
+  .kpi-value.blue  { color: var(--blue); }
+  .kpi-value.coral { color: var(--coral); }
+  .kpi-value.teal  { color: var(--teal); }
+  .kpi-value.dark  { color: var(--text); }
+  .kpi-sub { font-size: 0.72rem; color: var(--muted); margin-top: 0.25rem; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .card-title {
+    font-size: 0.75rem;
+    font-family: 'DM Mono', monospace;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    margin-bottom: 1.25rem;
+  }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.25rem;
+    margin-bottom: 1rem;
+    font-size: 0.75rem;
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+  }
+
+  .legend span { display: flex; align-items: center; gap: 6px; }
+  .dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; flex-shrink: 0; }
+
+  .chart-wrap { position: relative; width: 100%; }
+
+  footer {
+    margin-top: 2rem;
+    font-size: 0.72rem;
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+    text-align: right;
+    border-top: 1px solid var(--border);
+    padding-top: 1rem;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>FCI — Dashboard</h1>
+  <div class="header-right">
+    <span id="status">Cargando datos...</span>
+    <button id="reload" onclick="loadData()">↻ Actualizar</button>
+  </div>
+</header>
+
+<div id="loading">Obteniendo datos desde Google Sheets…</div>
+
+<div id="content">
+  <div class="kpis">
+    <div class="kpi">
+      <div class="kpi-label">Total ingresado</div>
+      <div class="kpi-value blue" id="kpi-ing">—</div>
+      <div class="kpi-sub" id="kpi-ing-sub">—</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Total retirado</div>
+      <div class="kpi-value coral" id="kpi-ret">—</div>
+      <div class="kpi-sub" id="kpi-ret-sub">—</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Neto aportado</div>
+      <div class="kpi-value dark" id="kpi-neto">—</div>
+      <div class="kpi-sub">ingresos − retiros</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Último saldo</div>
+      <div class="kpi-value teal" id="kpi-saldo">—</div>
+      <div class="kpi-sub" id="kpi-saldo-sub">—</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Movimientos por fecha</div>
+    <div class="legend">
+      <span><span class="dot" style="background:#3266ad"></span>Ingresos</span>
+      <span><span class="dot" style="background:#d85a30"></span>Retiros</span>
+    </div>
+    <div class="chart-wrap" style="height:300px;">
+      <canvas id="movChart" role="img" aria-label="Ingresos y retiros del FCI por fecha"></canvas>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Evolución del saldo consolidado</div>
+    <div class="legend">
+      <span><span class="dot" style="background:#1d9e75; border-radius:0; height:3px; width:14px;"></span>Saldo (M$)</span>
+    </div>
+    <div class="chart-wrap" style="height:260px;">
+      <canvas id="saldoChart" role="img" aria-label="Evolución del saldo consolidado del FCI"></canvas>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Ingresos individuales y acumulado</div>
+    <div class="legend">
+      <span><span class="dot" style="background:#3266ad"></span>Monto ingresado</span>
+      <span><span class="dot" style="background:#1d9e75; border-radius:0; height:3px; width:14px;"></span>Acumulado</span>
+    </div>
+    <div class="chart-wrap" style="height:280px;">
+      <canvas id="ingrChart" role="img" aria-label="Ingresos individuales al FCI con línea acumulada"></canvas>
+    </div>
+  </div>
+</div>
+
+<footer id="footer">FCI Dashboard · datos desde Google Sheets</footer>
+
+<script>
+const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSovqVhiIb-OPRizMyzTnYrmxterk9Q20z_uAVlK1BKP3mkQcVyKvB-EoaV-iPLMqQNGixRmkxkZlyk/pub?gid=0&single=true&output=csv';
+
+let charts = {};
+
+function parseNum(str) {
+  if (!str) return null;
+  const clean = str.replace(/\$|\./g, '').replace(',', '.').trim();
+  const n = parseFloat(clean);
+  return isNaN(n) ? null : n;
+}
+
+function parseCSV(text) {
+  const lines = text.trim().split('\n').map(l => l.split(',').map(c => c.replace(/^"|"$/g, '').trim()));
+  return lines;
+}
+
+function fmt(monto) {
+  if (monto >= 1e6) return '$' + (monto / 1e6).toFixed(1).replace('.', ',') + ' M';
+  return '$' + Math.round(monto).toLocaleString('es-AR');
+}
+
+function destroyChart(id) {
+  if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+}
+
+function buildCharts(ingresos, retiros, saldos) {
+  const gridColor = 'rgba(0,0,0,0.06)';
+  const tickColor = '#7a7870';
+
+  // --- Movimientos ---
+  const allFechas = [...new Set([...ingresos.map(d=>d.f), ...retiros.map(d=>d.f)])];
+  allFechas.sort((a,b) => {
+    const toDate = s => { const p=s.split('/'); return new Date(2026, parseInt(p[1]||1)-1, parseInt(p[0])); };
+    return toDate(a)-toDate(b);
+  });
+  const ingMap = Object.fromEntries(ingresos.map(d=>[d.f, d.v/1e6]));
+  const retMap = Object.fromEntries(retiros.map(d=>[d.f, d.v/1e6]));
+
+  destroyChart('mov');
+  charts['mov'] = new Chart(document.getElementById('movChart'), {
+    type: 'bar',
+    data: {
+      labels: allFechas,
+      datasets: [
+        { label: 'Ingresos', data: allFechas.map(f=>ingMap[f]||0), backgroundColor: '#3266ad', borderRadius: 3 },
+        { label: 'Retiros',  data: allFechas.map(f=>retMap[f]?-retMap[f]:0), backgroundColor: '#d85a30', borderRadius: 3 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: $${Math.abs(ctx.parsed.y).toFixed(1)}M` } } },
+      scales: {
+        x: { ticks: { autoSkip: false, maxRotation: 45, font: { size: 10 }, color: tickColor }, grid: { display: false } },
+        y: { ticks: { color: tickColor, callback: v => (v<0?'-':'')+'$'+Math.abs(v).toFixed(0)+'M' }, grid: { color: gridColor } }
+      }
+    }
+  });
+
+  // --- Saldo consolidado ---
+  destroyChart('saldo');
+  charts['saldo'] = new Chart(document.getElementById('saldoChart'), {
+    type: 'line',
+    data: {
+      labels: saldos.map(d=>d.f),
+      datasets: [{ label: 'Saldo', data: saldos.map(d=>d.v/1e6), borderColor: '#1d9e75', backgroundColor: 'rgba(29,158,117,0.07)', borderWidth: 2, pointBackgroundColor: '#1d9e75', pointRadius: 3.5, fill: true, tension: 0.3 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` $${ctx.parsed.y.toFixed(1)}M` } } },
+      scales: {
+        x: { ticks: { autoSkip: false, maxRotation: 45, font: { size: 10 }, color: tickColor }, grid: { display: false } },
+        y: { min: 0, ticks: { color: tickColor, callback: v => '$'+v.toFixed(0)+'M' }, grid: { color: gridColor } }
+      }
+    }
+  });
+
+  // --- Ingresos + acumulado ---
+  const acum = ingresos.reduce((a,d,i)=>{ a.push((a[i-1]||0)+d.v/1e6); return a; },[]);
+  destroyChart('ingr');
+  charts['ingr'] = new Chart(document.getElementById('ingrChart'), {
+    data: {
+      labels: ingresos.map(d=>d.f),
+      datasets: [
+        { type:'bar',  label:'Monto',     data: ingresos.map(d=>d.v/1e6), backgroundColor:'#3266ad', borderRadius:3, yAxisID:'y' },
+        { type:'line', label:'Acumulado', data: acum, borderColor:'#1d9e75', backgroundColor:'rgba(29,158,117,0.06)', borderWidth:2, pointBackgroundColor:'#1d9e75', pointRadius:3.5, fill:true, tension:0.3, yAxisID:'y2' }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` $${ctx.parsed.y.toFixed(1)}M` } } },
+      scales: {
+        x:  { ticks: { autoSkip: false, maxRotation: 45, font: { size: 10 }, color: tickColor }, grid: { display: false } },
+        y:  { position:'left',  ticks: { color: tickColor, callback: v=>'$'+v.toFixed(0)+'M' }, grid: { color: gridColor } },
+        y2: { position:'right', ticks: { color: '#1d9e75', callback: v=>'$'+v.toFixed(0)+'M' }, grid: { display: false } }
+      }
+    }
+  });
+}
+
+async function loadData() {
+  document.getElementById('status').textContent = 'Actualizando...';
+  document.getElementById('status').className = '';
+
+  try {
+    const resp = await fetch(CSV_URL);
+    if (!resp.ok) throw new Error('No se pudo obtener el CSV');
+    const text = await resp.text();
+    const rows = parseCSV(text);
+
+    const ingresos = [], retiros = [], saldos = [];
+
+    for (let i = 2; i < rows.length; i++) {
+      const r = rows[i];
+      if (r[0] && r[1]) {
+        const v = parseNum(r[1]);
+        if (v !== null) ingresos.push({ f: r[0].trim(), v });
+      }
+      if (r[2] && r[3]) {
+        const v = parseNum(r[3]);
+        if (v !== null) retiros.push({ f: r[2].trim(), v });
+      }
+      if (r[5] && r[6]) {
+        const v = parseNum(r[6]);
+        if (v !== null) saldos.push({ f: r[5].trim(), v });
+      }
+    }
+
+    const totalIng  = ingresos.reduce((s,d)=>s+d.v, 0);
+    const totalRet  = retiros.reduce((s,d)=>s+d.v, 0);
+    const neto      = totalIng - totalRet;
+    const lastSaldo = saldos[saldos.length-1];
+
+    document.getElementById('kpi-ing').textContent     = fmt(totalIng);
+    document.getElementById('kpi-ing-sub').textContent = ingresos.length + ' movimientos';
+    document.getElementById('kpi-ret').textContent     = fmt(totalRet);
+    document.getElementById('kpi-ret-sub').textContent = retiros.length + ' movimientos';
+    document.getElementById('kpi-neto').textContent    = fmt(neto);
+    document.getElementById('kpi-saldo').textContent   = lastSaldo ? fmt(lastSaldo.v) : '—';
+    document.getElementById('kpi-saldo-sub').textContent = lastSaldo ? 'al ' + lastSaldo.f : '—';
+
+    buildCharts(ingresos, retiros, saldos);
+
+    document.getElementById('loading').style.display  = 'none';
+    document.getElementById('content').style.display  = 'block';
+
+    const now = new Date().toLocaleString('es-AR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+    document.getElementById('status').textContent = '✓ Actualizado ' + now;
+    document.getElementById('status').className = 'ok';
+    document.getElementById('footer').textContent = 'FCI Dashboard · datos desde Google Sheets · ' + now;
+
+  } catch(e) {
+    document.getElementById('loading').textContent = 'Error al cargar los datos. Verificá tu conexión e intentá de nuevo.';
+    document.getElementById('status').textContent = '✗ Error al cargar';
+    document.getElementById('status').className = 'error';
+    console.error(e);
+  }
+}
+
+loadData();
+</script>
+</body>
+</html>
